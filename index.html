@@ -107,6 +107,7 @@ main{max-width:1080px;margin:20px auto 0 auto;padding:0 20px;}
 .task-row.done{opacity:0.45;}
 .task-row.done .task-title{text-decoration:line-through;}
 .task-mark{width:20px;font-size:15px;flex-shrink:0;text-align:center;}
+.task-check{width:19px;height:19px;flex-shrink:0;cursor:pointer;accent-color:var(--primary);}
 .task-body{flex:1;min-width:0;}
 .task-title{font-size:14px;font-weight:600;}
 .task-sub{font-size:11px;color:var(--text-muted);margin-top:2px;}
@@ -133,7 +134,8 @@ table.hourgrid td.timecol{background:#FFF8FB;color:var(--text-muted);font-size:1
 .topic-text{font-size:13px;font-weight:600;display:block;margin-bottom:6px;}
 .topic-item.done .topic-text{color:var(--text-muted);}
 .stage-checks{display:flex;gap:6px;flex-wrap:wrap;}
-.stage-chip{display:inline-flex;align-items:center;gap:4px;font-size:10.5px;background:#FFF6FA;border:1px solid var(--card-border);padding:3px 8px;border-radius:999px;color:var(--text-muted);font-weight:600;}
+.stage-chip{display:inline-flex;align-items:center;gap:4px;font-size:10.5px;background:#FFF6FA;border:1px solid var(--card-border);padding:3px 9px 3px 6px;border-radius:999px;color:var(--text-muted);font-weight:600;cursor:pointer;}
+.stage-chip input{width:12px;height:12px;accent-color:var(--primary-dark);cursor:pointer;}
 .stage-chip.on{background:var(--primary);color:#fff;border-color:var(--primary);}
 .empty{color:var(--text-muted);font-size:13px;padding:24px 0;text-align:center;}
 footer{max-width:1080px;margin:26px auto 0 auto;padding:0 20px;color:var(--text-muted);font-size:11px;display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;}
@@ -217,7 +219,7 @@ footer{max-width:1080px;margin:26px auto 0 auto;padding:0 20px;color:var(--text-
   <div class="view" id="view-tareas">
     <div class="card">
       <h2>📝 Tareas y fechas importantes</h2>
-      <div class="edit-hint">Se editan en la pestaña <b>Tareas</b> de tu Google Sheet (agrega filas, marca "hecho" con el checkbox).</div>
+      <div class="edit-hint">Marca "hecho" directo aquí, o agrega/edita filas en la pestaña <b>Tareas</b> de tu Sheet.</div>
       <div id="taskList"></div>
     </div>
   </div>
@@ -240,7 +242,7 @@ footer{max-width:1080px;margin:26px auto 0 auto;padding:0 20px;color:var(--text-
   <div class="view" id="view-temas">
     <div class="card">
       <h2>🎯 Temas por curso</h2>
-      <div class="edit-hint">Se editan en la pestaña <b>Temas</b> de tu Google Sheet (marca los checkboxes de revisado / resumen / revisado 2 / listo).</div>
+      <div class="edit-hint">Marca los checkboxes directo aquí, o agrega/edita temas en la pestaña <b>Temas</b> de tu Sheet.</div>
       <div class="topic-tabs" id="topicTabs"></div>
       <div id="topicContent"></div>
     </div>
@@ -323,12 +325,14 @@ function buildDataFromSheets(raw){
     if(!unit){ unit = {title:unidad, items:[]}; topics[cid].push(unit); }
     if(t.tema) unit.items.push({
       text: t.tema,
+      _row: t._row,
       stages: { r1:parseBool(t.revisado), resumen:parseBool(t.resumen), r2:parseBool(t.revisado2), listo:parseBool(t.listo) }
     });
   });
 
   const tasks = tareasRows.map((t,i)=>({
     id:'t'+i,
+    _row: t._row,
     title: t.titulo || '',
     course: String(t.curso_id || t.id || '').trim(),
     date: parseDate(t.fecha),
@@ -591,14 +595,14 @@ async function saveCourseNotes(courseId, notas){
   if(course) course.notes = notas;
   if(!isConfigured()) return;
   try{
-    await fetch(APPS_SCRIPT_URL, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body: JSON.stringify({curso_id:courseId, notas}) });
+    await fetch(APPS_SCRIPT_URL, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body: JSON.stringify({action:'notes', curso_id:courseId, notas}) });
     if(hint){ hint.textContent = 'guardado 💗'; hint.classList.add('notes-saved'); setTimeout(()=>{ hint.textContent='se guarda solo al salir del cuadro'; hint.classList.remove('notes-saved'); }, 2000); }
   }catch(e){
     if(hint) hint.textContent = 'no se pudo guardar, revisa tu conexión';
   }
 }
 
-// ---------- TAREAS (solo lectura) ----------
+// ---------- TAREAS ----------
 function renderTareas(){
   const wrap = document.getElementById('taskList');
   wrap.innerHTML = '';
@@ -607,11 +611,23 @@ function renderTareas(){
   sorted.forEach(t=>{
     const row = document.createElement('div');
     row.className = 'task-row priority-'+t.priority + (t.done?' done':'');
-    row.innerHTML = `<div class="task-mark">${t.done?'✅':'⬜'}</div>
+    row.innerHTML = `<input type="checkbox" class="task-check" ${t.done?'checked':''} onchange="toggleTaskDone('${t.id}', this.checked)">
       <div class="task-body"><div class="task-title">${escapeHtml(t.title)}</div>
       <div class="task-sub">${courseNameById(t.course)} · ${formatDate(t.date)} · prioridad ${t.priority}</div></div>`;
     wrap.appendChild(row);
   });
+}
+async function toggleTaskDone(taskId, value){
+  const t = DATA.tasks.find(t=>t.id===taskId);
+  if(!t) return;
+  t.done = value;
+  renderHoy();
+  if(!isConfigured() || !t._row) return;
+  try{
+    await fetch(APPS_SCRIPT_URL, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'},
+      body: JSON.stringify({action:'checkbox', sheet:'Tareas', row:t._row, column:'hecho', value}) });
+    showToast(value ? '¡Hecho! 💗' : 'Marcado como pendiente');
+  }catch(e){ showToast('No se pudo guardar, revisa tu conexión'); }
 }
 
 // ---------- HORARIO (solo lectura) ----------
@@ -644,7 +660,7 @@ function renderHorario(){
   table.innerHTML = html;
 }
 
-// ---------- TEMAS (solo lectura) ----------
+// ---------- TEMAS ----------
 function renderTemas(){
   const tabsWrap = document.getElementById('topicTabs');
   tabsWrap.innerHTML = DATA.courses.map(c=>`<button class="${activeTopicCourse===c.id?'active':''}" onclick="setTopicCourse('${c.id}')">${escapeHtml(c.name)}</button>`).join('');
@@ -658,13 +674,29 @@ function renderTemas(){
       const complete = STAGES.every(s=>it.stages[s.k]);
       return `<div class="topic-item ${complete?'done':''}">
         <span class="topic-text">${escapeHtml(it.text)}</span>
-        <div class="stage-checks">${STAGES.map(s=>`<span class="stage-chip ${it.stages[s.k]?'on':''}">${it.stages[s.k]?'✓':'○'} ${s.l}</span>`).join('')}</div>
+        <div class="stage-checks">${STAGES.map(s=>`<label class="stage-chip ${it.stages[s.k]?'on':''}">
+          <input type="checkbox" ${it.stages[s.k]?'checked':''} onchange="toggleTopicStage(${it._row},'${s.k}', this.checked)"> ${s.l}
+        </label>`).join('')}</div>
       </div>`;
     }).join('');
     return `<div class="unit-block"><h3>${escapeHtml(u.title)}</h3><div class="unit-progress">${doneCells}/${totalCells} casillas completadas</div>${itemsHtml}</div>`;
   }).join('');
 }
 function setTopicCourse(id){ activeTopicCourse = id; renderTemas(); }
+
+const STAGE_COLUMN = {r1:'revisado', resumen:'resumen', r2:'revisado2', listo:'listo'};
+async function toggleTopicStage(row, stageKey, value){
+  for(const cid in DATA.topics){
+    DATA.topics[cid].forEach(u=>u.items.forEach(it=>{ if(it._row===row) it.stages[stageKey]=value; }));
+  }
+  renderTemas();
+  renderHoy();
+  if(!isConfigured() || !row) return;
+  try{
+    await fetch(APPS_SCRIPT_URL, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'},
+      body: JSON.stringify({action:'checkbox', sheet:'Temas', row, column:STAGE_COLUMN[stageKey], value}) });
+  }catch(e){ showToast('No se pudo guardar, revisa tu conexión'); }
+}
 
 // ---------- Render orchestration ----------
 function renderAll(){ renderHoy(); renderCursos(); renderTareas(); renderHorario(); renderTemas(); }
