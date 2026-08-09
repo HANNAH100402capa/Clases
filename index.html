@@ -578,8 +578,8 @@ function renderCursos(){
         </div>
         <div class="notes-panel">
           <span class="notes-label">✏️ Apuntes rápidos</span>
-          <textarea class="notes-input" data-course-id="${course.id}" placeholder="Ej: el profe dijo que el parcial cubre hasta panel data...">${escapeHtml(course.notes||'')}</textarea>
-          <div class="notes-hint" data-hint-for="${course.id}">se guarda solo al salir del cuadro</div>
+          <textarea class="notes-input" data-course-id="${course.id}" placeholder="NOTAS...">${escapeHtml(course.notes||'')}</textarea>
+          <div class="notes-hint" data-hint-for="${course.id}"></div>
         </div>
       </div>
     `;
