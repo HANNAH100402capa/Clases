@@ -74,17 +74,24 @@ main{max-width:1080px;margin:20px auto 0 auto;padding:0 20px;}
 .deadline-days{font-size:12px;padding:3px 10px;border-radius:999px;white-space:nowrap;font-weight:700;}
 .days-soon{background:#FFE1E6;color:#C43859;}
 .days-ok{background:var(--trabajo-bg);color:var(--trabajo-fg);}
-.course-card{border:1.5px solid var(--card-border);margin-bottom:14px;}
+.course-card{border:1.5px solid var(--card-border);margin-bottom:12px;padding:13px 15px;}
 .course-card.electivo{border-color:#E3D6FF;background:linear-gradient(180deg,#fff,#FBF7FF);}
+.course-grid{display:grid;grid-template-columns:1fr 230px;gap:14px;align-items:start;margin-top:10px;}
+@media(max-width:800px){.course-grid{grid-template-columns:1fr;}}
 .course-head{display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:8px;}
-.course-name{font-size:16.5px;font-weight:700;font-family:'Baloo 2',sans-serif;color:var(--text);}
-.course-meta{font-size:11.5px;color:var(--text-muted);margin-top:2px;}
+.course-name{font-size:15px;font-weight:700;font-family:'Baloo 2',sans-serif;color:var(--text);}
+.course-meta{font-size:11px;color:var(--text-muted);margin-top:1px;}
+.notes-panel{background:#FFF8FB;border:1.5px dashed var(--card-border);border-radius:12px;padding:10px 11px;}
+.notes-panel .notes-label{font-size:10.5px;font-weight:700;color:var(--primary-dark);text-transform:uppercase;letter-spacing:0.3px;margin-bottom:6px;display:block;}
+.notes-panel textarea{width:100%;min-height:110px;resize:vertical;border:1px solid var(--card-border);border-radius:9px;background:#fff;padding:8px 9px;font-family:'Quicksand',sans-serif;font-size:12.5px;color:var(--text);}
+.notes-panel .notes-hint{font-size:9.5px;color:var(--text-muted);margin-top:5px;}
+.notes-panel .notes-saved{color:var(--trabajo-fg);}
 .tag{display:inline-block;font-size:10px;padding:2px 9px;border-radius:999px;background:var(--primary-soft);color:var(--primary-dark);font-weight:700;margin-right:4px;margin-top:6px;}
 .tag.electivo-tag{background:#EDE3FF;color:#7A57D1;}
 .avg-pill{font-family:'Baloo 2',sans-serif;font-size:19px;font-weight:800;padding:6px 14px;border-radius:12px;background:var(--primary-soft);color:var(--primary-dark);}
-.eval-table{width:100%;border-collapse:collapse;margin-top:10px;font-size:13px;}
-.eval-table th{text-align:left;color:var(--text-muted);font-weight:700;font-size:10.5px;padding:4px 6px;border-bottom:1px solid var(--card-border);text-transform:uppercase;}
-.eval-table td{padding:6px 6px;border-bottom:1px solid #FFF0F6;}
+.eval-table{width:100%;border-collapse:collapse;margin-top:8px;font-size:12px;}
+.eval-table th{text-align:left;color:var(--text-muted);font-weight:700;font-size:10px;padding:3px 5px;border-bottom:1px solid var(--card-border);text-transform:uppercase;}
+.eval-table td{padding:4px 5px;border-bottom:1px solid #FFF0F6;}
 .eval-view-name{font-weight:600;}
 .eval-view-weight{color:var(--text-muted);}
 .eval-view-grade{font-family:'Baloo 2',sans-serif;font-weight:700;color:var(--primary-dark);}
@@ -202,7 +209,7 @@ footer{max-width:1080px;margin:26px auto 0 auto;padding:0 20px;color:var(--text-
 
   <!-- CURSOS -->
   <div class="view" id="view-cursos">
-    <div class="edit-hint">Todo esto se edita en la pestaña <b>Cursos</b> y <b>Evaluaciones</b> de tu Google Sheet.</div>
+    <div class="edit-hint">Notas, pesos y fechas se editan en la pestaña <b>Cursos</b> y <b>Evaluaciones</b> de tu Sheet — excepto los "Apuntes rápidos" de cada curso, que puedes escribir directo aquí y se guardan solos.</div>
     <div id="courseList"></div>
   </div>
 
@@ -280,11 +287,11 @@ function buildDataFromSheets(raw){
   const configRows = raw.config || [];
 
   const courses = cursos.map(c=>{
-    const id = String(c.id||'').trim();
+    const id = String(c.id || c['código'] || c.codigo || '').trim();
     return {
       id,
       name: c.nombre || id,
-      code: c.codigo || '—',
+      code: c.codigo_up || c['código de curso'] || '—',
       professor: c.profesor || 'Por confirmar',
       modality: c.modalidad || 'Por confirmar',
       type: String(c.tipo||'carrera').trim().toLowerCase(),
@@ -292,8 +299,12 @@ function buildDataFromSheets(raw){
       schedule: horario.filter(h=> String(h.curso_id||'').trim()===id && String(h.tipo||'').trim().toLowerCase()==='clase')
                         .map(h=>({day:String(h.dia||'').trim(), start:String(h.inicio||'').trim(), end:String(h.fin||'').trim()}))
                         .filter(s=>s.day && s.start && s.end),
-      evaluation: evaluaciones.filter(ev=> String(ev.curso_id||'').trim()===id)
-                        .map(ev=>({name:ev.nombre||'', weight:Number(ev.peso||0), grade:parseGrade(ev.nota), date:parseDate(ev.fecha)}))
+      evaluation: evaluaciones.filter(ev=> String(ev.curso_id || ev.id || '').trim()===id)
+                        .map(ev=>{
+                          let w = Number(ev.peso||0);
+                          if(w>0 && w<=1) w = w*100; // Sheets guarda "10%" como 0.1
+                          return {name:ev.nombre||'', weight:w, grade:parseGrade(ev.nota), date:parseDate(ev.fecha)};
+                        })
                         .filter(ev=>ev.name)
     };
   });
@@ -305,7 +316,7 @@ function buildDataFromSheets(raw){
   const topics = {};
   courses.forEach(c=>{ topics[c.id] = []; });
   temasRows.forEach(t=>{
-    const cid = String(t.curso_id||'').trim();
+    const cid = String(t.curso_id || t.id || '').trim();
     if(!(cid in topics)) topics[cid] = [];
     const unidad = t.unidad || 'Unidad';
     let unit = topics[cid].find(u=>u.title===unidad);
@@ -319,7 +330,7 @@ function buildDataFromSheets(raw){
   const tasks = tareasRows.map((t,i)=>({
     id:'t'+i,
     title: t.titulo || '',
-    course: String(t.curso_id||'').trim(),
+    course: String(t.curso_id || t.id || '').trim(),
     date: parseDate(t.fecha),
     priority: String(t.prioridad||'media').trim().toLowerCase(),
     done: parseBool(t.hecho)
@@ -533,9 +544,11 @@ function renderHoy(){
   });
 }
 
-// ---------- CURSOS (solo lectura) ----------
+// ---------- CURSOS ----------
 function renderCursos(){
   const wrap = document.getElementById('courseList');
+  // no re-renderizar la lista si el usuario está escribiendo una nota ahora mismo
+  if(document.activeElement && document.activeElement.classList && document.activeElement.classList.contains('notes-input')) return;
   wrap.innerHTML = '';
   if(DATA.courses.length===0){ wrap.innerHTML = '<div class="empty">Sin datos todavía — revisa la conexión con tu Sheet.</div>'; return; }
   DATA.courses.forEach(course=>{
@@ -555,11 +568,34 @@ function renderCursos(){
         </div>
         <div class="avg-pill">${g!==null? g.toFixed(1) : '—'}</div>
       </div>
-      <div class="eval-scroll"><table class="eval-table"><thead><tr><th style="width:40%">Evaluación</th><th>Peso</th><th>Nota</th><th>Fecha</th></tr></thead><tbody>${rowsHtml || '<tr><td colspan="4" class="empty">Sin evaluaciones cargadas</td></tr>'}</tbody></table></div>
-      <div class="notes-view">${escapeHtml(course.notes||'Sin notas todavía.')}</div>
+      <div class="course-grid">
+        <div>
+          <div class="eval-scroll"><table class="eval-table"><thead><tr><th style="width:40%">Evaluación</th><th>Peso</th><th>Nota</th><th>Fecha</th></tr></thead><tbody>${rowsHtml || '<tr><td colspan="4" class="empty">Sin evaluaciones cargadas</td></tr>'}</tbody></table></div>
+        </div>
+        <div class="notes-panel">
+          <span class="notes-label">✏️ Apuntes rápidos</span>
+          <textarea class="notes-input" data-course-id="${course.id}" placeholder="Ej: el profe dijo que el parcial cubre hasta panel data...">${escapeHtml(course.notes||'')}</textarea>
+          <div class="notes-hint" data-hint-for="${course.id}">se guarda solo al salir del cuadro</div>
+        </div>
+      </div>
     `;
     wrap.appendChild(el);
   });
+  wrap.querySelectorAll('.notes-input').forEach(ta=>{
+    ta.addEventListener('change', (e)=> saveCourseNotes(e.target.dataset.courseId, e.target.value));
+  });
+}
+async function saveCourseNotes(courseId, notas){
+  const hint = document.querySelector(`.notes-hint[data-hint-for="${courseId}"]`);
+  const course = DATA.courses.find(c=>c.id===courseId);
+  if(course) course.notes = notas;
+  if(!isConfigured()) return;
+  try{
+    await fetch(APPS_SCRIPT_URL, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body: JSON.stringify({curso_id:courseId, notas}) });
+    if(hint){ hint.textContent = 'guardado 💗'; hint.classList.add('notes-saved'); setTimeout(()=>{ hint.textContent='se guarda solo al salir del cuadro'; hint.classList.remove('notes-saved'); }, 2000); }
+  }catch(e){
+    if(hint) hint.textContent = 'no se pudo guardar, revisa tu conexión';
+  }
 }
 
 // ---------- TAREAS (solo lectura) ----------
